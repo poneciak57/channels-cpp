@@ -56,6 +56,7 @@ long double test_throughput_default(double duration_seconds, bool print_results)
 
     running.store(false, std::memory_order_relaxed);
     producer.join();
+    sender.try_send(0); // Make sure that consumer can exit
     consumer.join();
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -101,6 +102,7 @@ long double test_throughput_pinning(double duration_seconds, bool print_results)
 
     running.store(false, std::memory_order_relaxed);
     producer.join();
+    sender.try_send(0); // Make sure that consumer can exit
     consumer.join();
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -166,7 +168,7 @@ long double test_latency_pinned(bool print_results) {
             int value = receiver.receive();
         }
     });
-    producer.join();
+    producer.join(); 
     consumer.join();
 
     auto end = std::chrono::high_resolution_clock::now();

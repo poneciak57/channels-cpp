@@ -24,12 +24,14 @@ The results of the benchmarks will be presented in a tabular format, comparing t
 - case 1 - 5 seconds run
 - case 2 - 1milion messages run
 
+More is better.
+
 ### Test #1
 | Implementation | Throughput case 1 (default) | Throughput case 1 (pinned) | Throughput case 2 (default) | Throughput case 2 (pinned) |
 |----------------|-----------------------|--------------|--------------|--------------|
-| Mutex          |            733529     |    257435    |    1969995   |    1901464   |
-| Boost          |          47586183     |  49778122    |   77319394   |   76695858   |
-| SPSC           |          50846662     |  52201800    |   76898212   |   72571863   |
+| Mutex          |            733_529      |    257_435     |    1_969_995   |    1_901_464   |
+| Boost          |          47_586_183     |  49_778_122    |   77_319_394   |   76_695_858   |
+| SPSC           |          50_846_662     |  52_201_800    |   76_898_212   |   72_571_863   |
 
 > Device: MacBook Pro M1 16GB (if ram matters) 
 > There is no thread pinning here i use some priority thing not sure how it works
@@ -37,9 +39,9 @@ The results of the benchmarks will be presented in a tabular format, comparing t
 ### Test #2
 | Implementation | Throughput case 1 (default) | Throughput case 1 (pinned) | Throughput case 2 (default) | Throughput case 2 (pinned) |
 |----------------|-----------------------|--------------|--------------|--------------|
-| Mutex          |            123456     |      10      |      100     |      200     |
-| Boost          |            234567     |      20      |      200     |      400     |
-| SPSC           |            345678     |      30      |      300     |      600     |
+| Mutex          |         10_122_469    |   27_525_350 |   20_149_022 |   31_704_680 |
+| Boost          |         28_293_277    |  119_969_760 |  197_746_021 |  207_497_723 |
+| SPSC           |         37_795_893    |  190_931_574 |  343_171_620 |  744_827_583 |
 
 > Device: Lenovo IdeaPad (linux, some ryzen)
 > Linux has real thread pinning capabilities.
