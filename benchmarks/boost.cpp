@@ -47,7 +47,7 @@ void warmup() {
     consumer.join();
 }
 
-void test_throughput_default() {
+long double test_throughput_default(double duration_seconds, bool print_results) {
     boost::lockfree::spsc_queue<int> queue(QUEUE_CAPACITY);
 
     // Measure throughput
@@ -78,21 +78,27 @@ void test_throughput_default() {
         }
     });
 
-    /// sleep for 5 seconds
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    /// sleep for specified duration
+    std::this_thread::sleep_for(std::chrono::duration<double>(duration_seconds));
 
     running.store(false, std::memory_order_relaxed);
     producer.join();
     consumer.join();
 
     auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
-    std::cout << "Produced: " << produced << ", Consumed: " << consumed << "\n";
-    std::cout << "Duration: " << duration.count() << " seconds\n";
-    std::cout << "Throughput (default): " << std::fixed << std::setprecision(0) << (produced + consumed) / duration.count() << " ops/sec\n";
+    std::chrono::duration<double> actual_duration = end - start;
+    long double throughput = static_cast<long double>(produced + consumed) / actual_duration.count();
+    
+    if (print_results) {
+        std::cout << "Produced: " << produced << ", Consumed: " << consumed << "\n";
+        std::cout << "Duration: " << actual_duration.count() << " seconds\n";
+        std::cout << "Throughput (default): " << std::fixed << std::setprecision(0) << throughput << " ops/sec\n";
+    }
+    
+    return throughput;
 }
 
-void test_throughput_pinning() {
+long double test_throughput_pinning(double duration_seconds, bool print_results) {
     boost::lockfree::spsc_queue<int> queue(QUEUE_CAPACITY);
 
     // Measure throughput
@@ -124,21 +130,27 @@ void test_throughput_pinning() {
         }
     });
 
-    /// sleep for 5 seconds
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    /// sleep for specified duration
+    std::this_thread::sleep_for(std::chrono::duration<double>(duration_seconds));
 
     running.store(false, std::memory_order_relaxed);
     producer.join();
     consumer.join();
 
     auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
-    std::cout << "Produced: " << produced << ", Consumed: " << consumed << "\n";
-    std::cout << "Duration: " << duration.count() << " seconds\n";
-    std::cout << "Throughput (high priority): " << std::fixed << std::setprecision(0) << (produced + consumed) / duration.count() << " ops/sec\n";
+    std::chrono::duration<double> actual_duration = end - start;
+    long double throughput = static_cast<long double>(produced + consumed) / actual_duration.count();
+    
+    if (print_results) {
+        std::cout << "Produced: " << produced << ", Consumed: " << consumed << "\n";
+        std::cout << "Duration: " << actual_duration.count() << " seconds\n";
+        std::cout << "Throughput (high priority): " << std::fixed << std::setprecision(0) << throughput << " ops/sec\n";
+    }
+    
+    return throughput;
 }
 
-void test_latency_default() {
+long double test_latency_default(bool print_results) {
     boost::lockfree::spsc_queue<int> queue(QUEUE_CAPACITY);
 
     // Measure throughput
@@ -166,12 +178,18 @@ void test_latency_default() {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
-    std::cout << "Produced: " << SPEED_TEST_QUANTITY << ", Consumed: " << SPEED_TEST_QUANTITY << "\n";
-    std::cout << "Duration: " << duration.count() << " seconds\n";
-    std::cout << "Throughput: " << std::fixed << std::setprecision(0) << (SPEED_TEST_QUANTITY + SPEED_TEST_QUANTITY) / duration.count() << " ops/sec\n";
+    long double throughput = static_cast<long double>(SPEED_TEST_QUANTITY + SPEED_TEST_QUANTITY) / duration.count();
+    
+    if (print_results) {
+        std::cout << "Produced: " << SPEED_TEST_QUANTITY << ", Consumed: " << SPEED_TEST_QUANTITY << "\n";
+        std::cout << "Duration: " << duration.count() << " seconds\n";
+        std::cout << "Throughput: " << std::fixed << std::setprecision(0) << throughput << " ops/sec\n";
+    }
+    
+    return throughput;
 }
 
-void test_latency_pinned() {
+long double test_latency_pinned(bool print_results) {
     boost::lockfree::spsc_queue<int> queue(QUEUE_CAPACITY);
 
     // Measure throughput
@@ -201,10 +219,15 @@ void test_latency_pinned() {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
-    std::cout << "Produced: " << SPEED_TEST_QUANTITY << ", Consumed: " << SPEED_TEST_QUANTITY << "\n";
-    std::cout << "Duration: " << duration.count() << " seconds\n";
-    std::cout << "Throughput (high priority): " << std::fixed << std::setprecision(0) << (SPEED_TEST_QUANTITY + SPEED_TEST_QUANTITY) / duration.count() << " ops/sec\n";
-
+    long double throughput = static_cast<long double>(SPEED_TEST_QUANTITY + SPEED_TEST_QUANTITY) / duration.count();
+    
+    if (print_results) {
+        std::cout << "Produced: " << SPEED_TEST_QUANTITY << ", Consumed: " << SPEED_TEST_QUANTITY << "\n";
+        std::cout << "Duration: " << duration.count() << " seconds\n";
+        std::cout << "Throughput (high priority): " << std::fixed << std::setprecision(0) << throughput << " ops/sec\n";
+    }
+    
+    return throughput;
 }
 
 int main() {
@@ -219,19 +242,19 @@ int main() {
     std::cout << "\n";
 
     std::cout << "Running throughput test (default)...\n";
-    test_throughput_default();
+    test_throughput_default(5.0, true);
     std::cout << "\n";
 
     std::cout << "Running throughput test (pinned)...\n";
-    test_throughput_pinning();
+    test_throughput_pinning(5.0, true);
     std::cout << "\n";
 
     std::cout << "Running latency test (default)...\n";
-    test_latency_default();
+    test_latency_default(true);
     std::cout << "\n";
 
     std::cout << "Running latency test (pinned)...\n";
-    test_latency_pinned();
+    test_latency_pinned(true);
     std::cout << "\n";
 
     std::cout.flush();
