@@ -1,16 +1,139 @@
 #include <atomic>
+#include <memory>
+#include <algorithm>
 
 namespace channels::spsc {
 
-template <typename T>
-class channel {
+template<typename T>
+class Sender;
+template<typename T>
+class Receiver;
+template<typename T>
+class InnerChannel;
 
+/// @brief Create a bounded single-producer, single-consumer channel
+/// @param capacity The minimum capacity of the channel
+/// @tparam T The type of values sent through the channel
+/// @return A pair of sender and receiver for the channel
+template <typename T>
+std::pair<Sender<T>, Receiver<T>> channel(size_t capacity) {
+    auto channel = std::make_shared<InnerChannel<T>>(capacity);
+    return { Sender<T>(channel), Receiver<T>(channel) };
+}
+
+/// @brief Sender for a single-producer, single-consumer channel
+/// @tparam T The type of values sent through the channel
+/// It allows to send values to the channel. It is designed to be used only from one thread at a time.
+template <typename T>
+class Sender {
+    /// Disallows sender creation outside of channel function 
+    explicit Sender(std::shared_ptr<InnerChannel<T>> chan) : channel_(chan) {}
+public:
+    Sender() = delete;
+    Sender(const Sender&) = delete;
+    Sender& operator=(const Sender&) = delete;
+    
+    Sender& operator=(Sender&& other) {
+        channel_ = std::move(other.channel_);
+        return *this;
+    } 
+    Sender(Sender&& other) : channel_(std::move(other.channel_)) {}
+
+    /// @brief Try to send a value to the channel
+    /// @param value The value to send
+    /// @return True if the value was sent, false if the channel is full
+    bool try_send(const T& value) {
+        return channel_->try_send(value);
+    }
+
+    /// @brief Try to send a value to the channel
+    /// @param value The value to send
+    /// @return True if the value was sent, false if the channel is full
+    bool try_send(T&& value) {
+        return channel_->try_send(std::move(value));
+    }
+
+    /// @brief Send a value to the channel
+    /// @param value The value to send
+    /// @note This function is blocking and will wait until the value is sent.
+    void send(const T& value) {
+        while (!channel_->try_send(value)) {
+            // compiler barrier
+            asm volatile ("" ::: "memory");
+        }
+    }
+
+    /// @brief Send a value to the channel
+    /// @param value The value to send
+    /// @note This function is blocking and will wait until the value is sent.
+    void send(T&& value) {
+        while (!channel_->try_send(std::move(value))) {
+            // compiler barrier
+            asm volatile ("" ::: "memory");
+        }
+    }
+
+private:
+    std::shared_ptr<InnerChannel<T>> channel_;
+
+    friend std::pair<Sender<T>, Receiver<T>> channel<T>(size_t capacity);
+};
+
+/// @brief Receiver for a single-producer, single-consumer channel
+/// @tparam T The type of values sent through the channel
+/// It allows to receive values from the channel. It is designed to be used only from one thread at a time.
+template <typename T>
+class Receiver {
+    /// Disallows receiver creation outside of channel function
+    explicit Receiver(std::shared_ptr<InnerChannel<T>> chan) : channel_(chan) {}
+public:
+    Receiver() = delete;
+    Receiver(const Receiver&) = delete;
+    Receiver& operator=(const Receiver&) = delete;
+
+    Receiver& operator=(Receiver&& other) {
+        channel_ = std::move(other.channel_);
+        return *this;
+    }
+    Receiver(Receiver&& other) : channel_(std::move(other.channel_)) {}
+
+    /// @brief Try to receive a value from the channel
+    /// @param value The received value
+    /// @return True if a value was received, false if the channel is empty
+    bool try_receive(T& value) {
+        return channel_->try_receive(value);
+    }
+
+    /// @brief Receive a value from the channel
+    /// @return The received value
+    /// @note This function is blocking and will wait until a value is available.
+    T receive() {
+        T value;
+        while (!channel_->try_receive(value)) {
+            // compiler barrier
+            asm volatile ("" ::: "memory");
+        }
+        return value;
+    }
+
+private:
+    std::shared_ptr<InnerChannel<T>> channel_;
+
+    friend std::pair<Sender<T>, Receiver<T>> channel<T>(size_t capacity);
+};
+
+/// @brief Inner channel implementation for the SPSC queue
+/// @tparam T The type of values sent through the channel
+/// This class is not intended to be used directly by users.
+/// @note this class is not thread safe and should be wrapped in std::shared_ptr
+template <typename T>
+class InnerChannel {
 public:
     /// @brief Construct a channel with a given capacity
     /// @param capacity The minimum capacity of the channel, for performance it will be allocated with next power of 2
     /// Uses raw memory allocation so the T type is not required to provide default constructors
     /// alignment is the key for performance it makes sure that objects are properly aligned in memory for faster access
-    explicit channel(size_t capacity) : 
+    explicit InnerChannel(size_t capacity) : 
         capacity_(next_power_of_2(capacity)),
         capacity_mask_(capacity_ - 1),
         buffer_(static_cast<T*>(operator new[](capacity_ * sizeof(T), std::align_val_t{alignof(T)}))) {
@@ -19,9 +142,8 @@ public:
         rcvCursorCache_ = 0;
         sendCursorCache_ = 0;
     }
-
     /// This should not be called if there is existing handle to reader or writer
-    ~channel() {
+    ~InnerChannel() {
         size_t sendCursor = sendCursor_.load(std::memory_order_seq_cst);
         size_t rcvCursor = rcvCursor_.load(std::memory_order_seq_cst);
 
@@ -42,7 +164,7 @@ public:
     /// @note This function is lock-free and wait-free
     bool try_send(const T& value) {
         size_t sendCursor = sendCursor_.load(std::memory_order_relaxed); // only sender thread writes this
-        size_t next_sendCursor = (sendCursor + 1) & capacity_mask_;
+        size_t next_sendCursor = next_index(sendCursor);
 
         if (next_sendCursor == rcvCursorCache_) {
             rcvCursorCache_ = rcvCursor_.load(std::memory_order_acquire);
@@ -62,7 +184,7 @@ public:
     /// @note This function is lock-free and wait-free
     bool try_send(T&& value) {
         size_t sendCursor = sendCursor_.load(std::memory_order_relaxed); // only sender thread writes this
-        size_t next_sendCursor = (sendCursor + 1) & capacity_mask_;
+        size_t next_sendCursor = next_index(sendCursor);
 
         if (next_sendCursor == rcvCursorCache_) {
             rcvCursorCache_ = rcvCursor_.load(std::memory_order_acquire);
@@ -91,7 +213,7 @@ public:
         value = std::move(buffer_[rcvCursor]);
         buffer_[rcvCursor].~T(); // Call destructor
 
-        rcvCursor_.store((rcvCursor + 1) & capacity_mask_, std::memory_order_release);
+        rcvCursor_.store(next_index(rcvCursor), std::memory_order_release);
         return true;
     }
 
@@ -130,6 +252,10 @@ private:
     /// Consumer-side data (accessed by receiver thread)  
     alignas(64) std::atomic<size_t> rcvCursor_{0};
     alignas(64) size_t sendCursorCache_{0}; // reduces cache coherency
+
+    friend class Sender<T>;
+    friend class Receiver<T>;
+    friend std::pair<Sender<T>, Receiver<T>> channel<T>(size_t capacity);
 };
 
 

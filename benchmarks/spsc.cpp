@@ -7,7 +7,6 @@
 #include <spsc.hpp>
 
 using namespace channels::spsc;
-
 constexpr size_t QUEUE_CAPACITY = 1024;
 constexpr size_t SPEED_TEST_QUANTITY = 1000000;
 
@@ -28,22 +27,19 @@ void set_thread_priority_macos() {
 }
 
 void warmup() {
-    channels::spsc::channel<int> channel(QUEUE_CAPACITY);
-    std::thread producer([&channel]() {
+    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
+    // auto sender = std::move(channel_.first);
+    // auto receiver = std::move(channel_.second);
+
+    std::thread producer([&sender]() {
         for (int i = 0; i < 10000; ++i) {
-            while (!channel.try_send(i)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            sender.send(i);
         }
     });
-    std::thread consumer([&channel]() {
+    std::thread consumer([&receiver]() {
         int value;
         for (int i = 0; i < 10000; ++i) {
-            while (!channel.try_receive(value)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            receiver.receive();
         }
     });
     producer.join();
@@ -51,7 +47,7 @@ void warmup() {
 }
 
 void test_throughput_default() {
-    channels::spsc::channel<int> channel(QUEUE_CAPACITY);
+    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
 
     // Measure throughput
     auto start = std::chrono::high_resolution_clock::now();
@@ -61,22 +57,15 @@ void test_throughput_default() {
     int produced = 0;
     int consumed = 0;
 
-    std::thread producer([&channel, &produced, &running]() {
+    std::thread producer([&sender, &produced, &running]() {
         while (running.load(std::memory_order_relaxed)) {
-            while (!channel.try_send(produced)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            sender.send(produced);
             produced++;
         }
     });
-    std::thread consumer([&channel, &consumed, &running]() {
-        int value;
+    std::thread consumer([&receiver, &consumed, &running]() {
         while (running.load(std::memory_order_relaxed)) {
-            while (!channel.try_receive(value)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            receiver.receive();
             consumed++;
         }
     });
@@ -96,7 +85,7 @@ void test_throughput_default() {
 }
 
 void test_throughput_pinning() {
-    channels::spsc::channel<int> channel(QUEUE_CAPACITY);
+    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
 
     // Measure throughput
     auto start = std::chrono::high_resolution_clock::now();
@@ -105,24 +94,17 @@ void test_throughput_pinning() {
     int produced = 0;
     int consumed = 0;
 
-    std::thread producer([&channel, &produced, &running]() {
+    std::thread producer([&sender, &produced, &running]() {
         set_thread_priority_macos();
         while (running.load(std::memory_order_relaxed)) {
-            while (!channel.try_send(produced)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            sender.send(produced);
             produced++;
         }
     });
-    std::thread consumer([&channel, &consumed, &running]() {
+    std::thread consumer([&receiver, &consumed, &running]() {
         set_thread_priority_macos();
-        int value;
         while (running.load(std::memory_order_relaxed)) {
-            while (!channel.try_receive(value)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            receiver.receive();
             consumed++;
         }
     });
@@ -142,26 +124,19 @@ void test_throughput_pinning() {
 }
 
 void test_latency_default() {
-    channels::spsc::channel<int> channel(QUEUE_CAPACITY);
+    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
 
     // Measure throughput
     auto start = std::chrono::high_resolution_clock::now();
 
-    std::thread producer([&channel]() {
+    std::thread producer([&sender]() {
         for (int i = 0; i < SPEED_TEST_QUANTITY; ++i) {
-            while (!channel.try_send(i)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            sender.send(i);
         }
     });
-    std::thread consumer([&channel]() {
+    std::thread consumer([&receiver]() {
         for (int i = 0; i < SPEED_TEST_QUANTITY; ++i) {
-            int value;
-            while (!channel.try_receive(value)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            int value = receiver.receive();
         }
     });
     producer.join();
@@ -175,28 +150,21 @@ void test_latency_default() {
 }
 
 void test_latency_pinned() {
-    channels::spsc::channel<int> channel(QUEUE_CAPACITY);
+    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
 
     // Measure throughput
     auto start = std::chrono::high_resolution_clock::now();
 
-    std::thread producer([&channel]() {
+    std::thread producer([&sender]() {
         set_thread_priority_macos();
         for (int i = 0; i < SPEED_TEST_QUANTITY; ++i) {
-            while (!channel.try_send(i)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            sender.send(i);
         }
     });
-    std::thread consumer([&channel]() {
+    std::thread consumer([&receiver]() {
         set_thread_priority_macos();
         for (int i = 0; i < SPEED_TEST_QUANTITY; ++i) {
-            int value;
-            while (!channel.try_receive(value)) {
-                // compiler barrier
-                asm volatile ("" ::: "memory");
-            }
+            int value = receiver.receive();
         }
     });
     producer.join();
