@@ -215,7 +215,7 @@ int main() {
     std::cin.tie(nullptr);
     std::cout.tie(nullptr);
 
-    std::cout << "Boost benchmarks: \n";
+    std::cout << "SPSC (Mutex impl) benchmarks: \n";
     std::cout << "Queue capacity: " << QUEUE_CAPACITY << "\n";
     std::cout << "Warmup: \n";
     warmup();
