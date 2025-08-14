@@ -164,12 +164,38 @@ void example_overflowable() {
     consumer.join();
 }
 
+void example_atomicwait() {
+    auto [sender, receiver] = channel<int, OverflowStrategy::WAIT_ON_FULL, WaitStrategy::ATOMIC_WAIT>(16);
+
+    std::thread producer([&]() {
+        for (int i = 0; i < 100; ++i) {
+            sender.send(i);
+            std::cout << "Sent: " << i << std::endl;
+        }
+    });
+
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    std::thread consumer([&]() {
+        for (int i = 0; i < 100; ++i) {
+            int value = receiver.receive();
+            std::cout << "Received: " << value << std::endl;
+        }
+    });
+
+    producer.join();
+    consumer.join();
+}
+
 int main() {
     std::cout << "Example: Simple" << std::endl;
     example_simple();
 
     std::cout << "Example: Overflowable" << std::endl;
     example_overflowable();
+
+    std::cout << "Example: Atomic Wait" << std::endl;
+    example_atomicwait();
 
     return 0;
 }
