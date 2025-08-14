@@ -1,7 +1,9 @@
+/// Implementation used in benchmarks
+
 #include <mutex>
 #include <atomic>
 
-namespace channels::spsc {
+namespace channels::spsc::benchmarks {
 
 /// @brief A single-producer single-consumer implementation using mutex for locking
 /// @tparam T 

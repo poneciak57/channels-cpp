@@ -5,7 +5,7 @@
 using namespace channels::spsc;
 
 
-void example_both_start() {
+void example_simple() {
     auto [sender, receiver] = channel<int>(16);
 
     std::thread producer([&]() {
@@ -20,51 +20,6 @@ void example_both_start() {
             std::cout << "Received: " << value << std::endl;
         }
     });
-
-    producer.join();
-    consumer.join();
-}
-
-void example_sender_first() {
-    auto [sender, receiver] = channel<int>(16);
-
-    std::thread producer([&]() {
-        for (int i = 0; i < 100; ++i) {
-            sender.send(i);
-            std::cout << "Sent: " << i << std::endl;
-        }
-    });
-
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    std::thread consumer([&]() {
-        for (int i = 0; i < 100; ++i) {
-            int value = receiver.receive();
-        }
-    });
-
-    producer.join();
-    consumer.join();
-}
-
-void example_receiver_first() {
-    auto [sender, receiver] = channel<int>(16);
-    
-    std::thread consumer([&]() {
-        for (int i = 0; i < 100; ++i) {
-            int value = receiver.receive();
-            std::cout << "Received: " << value << std::endl;
-        }
-    });
-
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    std::thread producer([&]() {
-        for (int i = 0; i < 100; ++i) {
-            sender.send(i);
-        }
-    });
-
 
     producer.join();
     consumer.join();
@@ -186,18 +141,35 @@ void example_secure_detached_threads() {
     std::cout << "Both detached threads completed" << std::endl;
 }
 
+void example_overflowable() {
+    auto [sender, receiver] = channel<int, OverflowStrategy::OVERWRITE_ON_FULL>(16);
+
+    std::thread producer([&]() {
+        for (int i = 0; i < 100; ++i) {
+            sender.send(i);
+            std::cout << "Sent: " << i << std::endl;
+        }
+    });
+
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    std::thread consumer([&]() {
+        int value;
+        while (receiver.try_receive(value) != ResponseStatus::CHANNEL_EMPTY) {
+            std::cout << "Received: " << value << std::endl;
+        }
+    });
+
+    producer.join();
+    consumer.join();
+}
 
 int main() {
-    std::cout << "Example: Both start" << std::endl;
-    example_both_start();
-    std::cin.ignore();
+    std::cout << "Example: Simple" << std::endl;
+    example_simple();
 
-    std::cout << "Example: Sender first" << std::endl;
-    example_sender_first();
-    std::cin.ignore();
-
-    std::cout << "Example: Receiver first" << std::endl;
-    example_receiver_first();
+    std::cout << "Example: Overflowable" << std::endl;
+    example_overflowable();
 
     return 0;
 }

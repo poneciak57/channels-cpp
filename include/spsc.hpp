@@ -1,33 +1,69 @@
 #include <atomic>
 #include <memory>
 #include <algorithm>
+#include <thread>
 
 namespace channels::spsc {
 
-template<typename T>
+/// @brief Overflow strategy for sender when the channel is full
+enum class OverflowStrategy {
+    /// @brief Block and wait for space (default behavior)
+    WAIT_ON_FULL,
+
+    /// @brief Overwrite the oldest unread element
+    OVERWRITE_ON_FULL
+};
+
+/// @brief Wait strategy for receiver and sender when looping and trying
+enum class WaitStrategy {
+    /// @brief Busy loop waiting strategy
+    /// @note should be used when low latency is required and channel is not expected to wait
+    /// @note should be definitly used with OverflowStrategy::OVERWRITE_ON_FULL
+    BUSY_LOOP,
+
+    /// @brief Yielding waiting strategy
+    /// @note should be used when low latency is not critical and channel is expected to wait
+    YIELD
+};
+
+/// @brief Response status for channel operations
+enum class ResponseStatus {
+    SUCCESS,
+    CHANNEL_FULL,
+    CHANNEL_EMPTY,
+
+    // Only for OVERWRITE_ON_FULL strategy
+    // Indicates that the last value is being overwritten or read so try fails
+    SKIP_DUE_TO_OVERWRITE
+};
+
+template<typename T, OverflowStrategy Strategy, WaitStrategy Wait>
 class Sender;
-template<typename T>
+template<typename T, OverflowStrategy Strategy, WaitStrategy Wait>
 class Receiver;
-template<typename T>
+template<typename T, OverflowStrategy Strategy>
 class InnerChannel;
 
 /// @brief Create a bounded single-producer, single-consumer channel
-/// @param capacity The minimum capacity of the channel
+/// @param capacity The minimum capacity of the channel, real capacity will be equal to the closest higher or equal power of two - 1. So for example, if capacity = 12 then channel will hold 15 elements.
 /// @tparam T The type of values sent through the channel
+/// @tparam Strategy The overflow strategy (default: WAIT_ON_FULL)
+/// @tparam Wait The wait strategy used when looping and trying to send or receive (default: BUSY_LOOP)
 /// @return A pair of sender and receiver for the channel
-template <typename T>
-std::pair<Sender<T>, Receiver<T>> channel(size_t capacity) {
-    auto channel = std::make_shared<InnerChannel<T>>(capacity);
-    return { Sender<T>(channel), Receiver<T>(channel) };
+template <typename T, OverflowStrategy Strategy = OverflowStrategy::WAIT_ON_FULL, WaitStrategy Wait = WaitStrategy::BUSY_LOOP>
+std::pair<Sender<T, Strategy, Wait>, Receiver<T, Strategy, Wait>> channel(size_t capacity) {
+    auto channel = std::make_shared<InnerChannel<T, Strategy>>(capacity);
+    return { Sender<T, Strategy, Wait>(channel), Receiver<T, Strategy, Wait>(channel) };
 }
 
 /// @brief Sender for a single-producer, single-consumer channel
 /// @tparam T The type of values sent through the channel
+/// @tparam Strategy The overflow strategy used by the channel
 /// It allows to send values to the channel. It is designed to be used only from one thread at a time.
-template <typename T>
+template <typename T, OverflowStrategy Strategy = OverflowStrategy::WAIT_ON_FULL, WaitStrategy Wait = WaitStrategy::BUSY_LOOP>
 class Sender {
-    /// Disallows sender creation outside of channel function 
-    explicit Sender(std::shared_ptr<InnerChannel<T>> chan) : channel_(chan) {}
+    /// Disallows sender creation outside of channel function
+    explicit Sender(std::shared_ptr<InnerChannel<T, Strategy>> chan) : channel_(chan) {}
 public:
     Sender() = delete;
     Sender(const Sender&) = delete;
@@ -41,51 +77,52 @@ public:
 
     /// @brief Try to send a value to the channel
     /// @param value The value to send
-    /// @return True if the value was sent, false if the channel is full
-    bool try_send(const T& value) {
-        return channel_->try_send(value);
+    /// @return ResponseStatus indicating the result of the operation
+    template<typename U>
+    ResponseStatus try_send(U&& value) {
+        return channel_->try_send(std::forward<U>(value));
     }
 
-    /// @brief Try to send a value to the channel
-    /// @param value The value to send
-    /// @return True if the value was sent, false if the channel is full
-    bool try_send(T&& value) {
-        return channel_->try_send(std::move(value));
-    }
-
-    /// @brief Send a value to the channel
+    /// @brief Send a value to the channel (copy version)
     /// @param value The value to send
     /// @note This function is blocking and will wait until the value is sent.
     void send(const T& value) {
-        while (!channel_->try_send(value)) {
-            // compiler barrier
-            asm volatile ("" ::: "memory");
+        while (channel_->try_send(value) != ResponseStatus::SUCCESS) {
+            if constexpr (Wait == WaitStrategy::YIELD) {
+                std::this_thread::yield(); // Yield to allow other threads to run
+            } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
+                asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
+            }
         }
     }
 
-    /// @brief Send a value to the channel
+    /// @brief Send a value to the channel (move version)
     /// @param value The value to send
     /// @note This function is blocking and will wait until the value is sent.
     void send(T&& value) {
-        while (!channel_->try_send(std::move(value))) {
-            // compiler barrier
-            asm volatile ("" ::: "memory");
+        while (channel_->try_send(std::move(value)) != ResponseStatus::SUCCESS) {
+            if constexpr (Wait == WaitStrategy::YIELD) {
+                std::this_thread::yield(); // Yield to allow other threads to run
+            } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
+                asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
+            }
         }
     }
 
 private:
-    std::shared_ptr<InnerChannel<T>> channel_;
+    std::shared_ptr<InnerChannel<T, Strategy>> channel_;
 
-    friend std::pair<Sender<T>, Receiver<T>> channel<T>(size_t capacity);
+    friend std::pair<Sender<T, Strategy, Wait>, Receiver<T, Strategy, Wait>> channel<T, Strategy, Wait>(size_t capacity);
 };
 
 /// @brief Receiver for a single-producer, single-consumer channel
 /// @tparam T The type of values sent through the channel
+/// @tparam Strategy The overflow strategy used by the channel
 /// It allows to receive values from the channel. It is designed to be used only from one thread at a time.
-template <typename T>
+template <typename T, OverflowStrategy Strategy = OverflowStrategy::WAIT_ON_FULL, WaitStrategy Wait = WaitStrategy::BUSY_LOOP>
 class Receiver {
     /// Disallows receiver creation outside of channel function
-    explicit Receiver(std::shared_ptr<InnerChannel<T>> chan) : channel_(chan) {}
+    explicit Receiver(std::shared_ptr<InnerChannel<T, Strategy>> chan) : channel_(chan) {}
 public:
     Receiver() = delete;
     Receiver(const Receiver&) = delete;
@@ -99,8 +136,8 @@ public:
 
     /// @brief Try to receive a value from the channel
     /// @param value The received value
-    /// @return True if a value was received, false if the channel is empty
-    bool try_receive(T& value) {
+    /// @return True if a value was received, false if the channel is empty or the last value was overwritten (OVERWRITE_ON_FULL only)
+    ResponseStatus try_receive(T& value) {
         return channel_->try_receive(value);
     }
 
@@ -109,24 +146,28 @@ public:
     /// @note This function is blocking and will wait until a value is available.
     T receive() {
         T value;
-        while (!channel_->try_receive(value)) {
-            // compiler barrier
-            asm volatile ("" ::: "memory");
+        while (channel_->try_receive(value) != ResponseStatus::SUCCESS) {
+            if constexpr (Wait == WaitStrategy::YIELD) {
+                std::this_thread::yield(); // Yield to allow other threads to run
+            } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
+                asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
+            }
         }
         return value;
     }
 
 private:
-    std::shared_ptr<InnerChannel<T>> channel_;
+    std::shared_ptr<InnerChannel<T, Strategy>> channel_;
 
-    friend std::pair<Sender<T>, Receiver<T>> channel<T>(size_t capacity);
+    friend std::pair<Sender<T, Strategy, Wait>, Receiver<T, Strategy, Wait>> channel<T, Strategy, Wait>(size_t capacity);
 };
 
 /// @brief Inner channel implementation for the SPSC queue
 /// @tparam T The type of values sent through the channel
+/// @tparam Strategy The overflow strategy to use when the channel is full
 /// This class is not intended to be used directly by users.
 /// @note this class is not thread safe and should be wrapped in std::shared_ptr
-template <typename T>
+template <typename T, OverflowStrategy Strategy = OverflowStrategy::WAIT_ON_FULL>
 class InnerChannel {
 public:
     /// @brief Construct a channel with a given capacity
@@ -141,7 +182,13 @@ public:
         // Initialize cache values for better performance
         rcvCursorCache_ = 0;
         sendCursorCache_ = 0;
+        
+        // Initialize reader state for overwrite strategy
+        if constexpr (Strategy == OverflowStrategy::OVERWRITE_ON_FULL) {
+            oldestOccupied_.store(false, std::memory_order_relaxed);
+        }
     }
+    
     /// This should not be called if there is existing handle to reader or writer
     ~InnerChannel() {
         size_t sendCursor = sendCursor_.load(std::memory_order_seq_cst);
@@ -160,64 +207,113 @@ public:
 
     /// @brief Try to send a value to the channel
     /// @param value The value to send
-    /// @return True if the value was sent successfully, false if the channel is full
+    /// @return ResponseStatus indicating the result of the operation
     /// @note This function is lock-free and wait-free
-    bool try_send(const T& value) {
-        size_t sendCursor = sendCursor_.load(std::memory_order_relaxed); // only sender thread writes this
-        size_t next_sendCursor = next_index(sendCursor);
-
-        if (next_sendCursor == rcvCursorCache_) {
-            rcvCursorCache_ = rcvCursor_.load(std::memory_order_acquire);
-            if (next_sendCursor == rcvCursorCache_) return false; // Buffer full
+    template<typename U>
+    ResponseStatus try_send(U&& value) {
+        if constexpr (Strategy == OverflowStrategy::WAIT_ON_FULL) {
+            return try_send_wait_on_full(std::forward<U>(value));
+        } else {
+            return try_send_overwrite_on_full(std::forward<U>(value));
         }
-
-        // Construct the new element in place
-        new (&buffer_[sendCursor]) T(value);
-        
-        sendCursor_.store(next_sendCursor, std::memory_order_release);
-        return true;
-    }
-
-    /// @brief Try to send a value to the channel (move version)
-    /// @param value The value to send
-    /// @return True if the value was sent successfully, false if the channel is full
-    /// @note This function is lock-free and wait-free
-    bool try_send(T&& value) {
-        size_t sendCursor = sendCursor_.load(std::memory_order_relaxed); // only sender thread writes this
-        size_t next_sendCursor = next_index(sendCursor);
-
-        if (next_sendCursor == rcvCursorCache_) {
-            rcvCursorCache_ = rcvCursor_.load(std::memory_order_acquire);
-            if (next_sendCursor == rcvCursorCache_) return false; // Buffer full
-        }
-
-        // Construct the new element in place
-        new (&buffer_[sendCursor]) T(std::move(value));
-        
-        sendCursor_.store(next_sendCursor, std::memory_order_release);
-        return true;
     }    
     
     /// @brief Try to receive a value from the channel
     /// @param value The variable to store the received value
     /// @return True if the value was received successfully, false if the channel is empty
     /// @note This function is lock-free and wait-free
-    bool try_receive(T& value) {
+    ResponseStatus try_receive(T& value) {
+        if constexpr (Strategy == OverflowStrategy::OVERWRITE_ON_FULL) {
+            // Set reader active flag to prevent overwrites during read
+            bool isOccupied = oldestOccupied_.exchange(true, std::memory_order_acq_rel);
+            if (isOccupied) {
+                // It means that the oldest element is being overwritten so we cannot read
+                return ResponseStatus::SKIP_DUE_TO_OVERWRITE;
+            }
+        }
+        
         size_t rcvCursor = rcvCursor_.load(std::memory_order_relaxed); // only receiver thread reads this
 
         if (rcvCursor == sendCursorCache_) {
+            // Refresh cache
             sendCursorCache_ = sendCursor_.load(std::memory_order_acquire);
-            if (rcvCursor == sendCursorCache_) return false; // Buffer empty
+            if (rcvCursor == sendCursorCache_) {
+                if constexpr (Strategy == OverflowStrategy::OVERWRITE_ON_FULL) {
+                    oldestOccupied_.store(false, std::memory_order_release);
+                }
+
+                return ResponseStatus::CHANNEL_EMPTY;
+            }
         }
 
         value = std::move(buffer_[rcvCursor]);
         buffer_[rcvCursor].~T(); // Call destructor
 
         rcvCursor_.store(next_index(rcvCursor), std::memory_order_release);
-        return true;
+        
+        if constexpr (Strategy == OverflowStrategy::OVERWRITE_ON_FULL) {
+            oldestOccupied_.store(false, std::memory_order_release);
+        }
+
+        return ResponseStatus::SUCCESS;
     }
 
 private:
+    /// @brief Try to send with WAIT_ON_FULL strategy (original behavior)
+    template<typename U>
+    inline ResponseStatus try_send_wait_on_full(U&& value) {
+        size_t sendCursor = sendCursor_.load(std::memory_order_relaxed); // only sender thread writes this
+        size_t next_sendCursor = next_index(sendCursor);
+
+        if (next_sendCursor == rcvCursorCache_) {
+            // Refresh the cache
+            rcvCursorCache_ = rcvCursor_.load(std::memory_order_acquire);
+            if (next_sendCursor == rcvCursorCache_) return ResponseStatus::CHANNEL_FULL;
+        }
+
+        // Construct the new element in place
+        new (&buffer_[sendCursor]) T(std::forward<U>(value));
+        
+        sendCursor_.store(next_sendCursor, std::memory_order_release);
+        return ResponseStatus::SUCCESS;
+    }
+    
+    /// @brief Try to send with OVERWRITE_ON_FULL strategy
+    template<typename U>
+    inline ResponseStatus try_send_overwrite_on_full(U&& value) {
+        size_t sendCursor = sendCursor_.load(std::memory_order_relaxed); // only sender thread writes this
+        size_t next_sendCursor = next_index(sendCursor);
+
+        if (next_sendCursor == rcvCursorCache_) {
+            // Refresh the cache
+            rcvCursorCache_ = rcvCursor_.load(std::memory_order_acquire);
+            if (next_sendCursor == rcvCursorCache_) {
+                bool isOldestOccupied = oldestOccupied_.exchange(true, std::memory_order_acq_rel);
+                if (isOldestOccupied) {
+                    // If the oldest element is occupied, we cannot overwrite
+                    return ResponseStatus::SKIP_DUE_TO_OVERWRITE;
+                }
+
+                size_t newestRcvCursor = rcvCursor_.load(std::memory_order_acquire);
+
+                /// If the receiver did not advance, we can safely advance the cursor
+                if (rcvCursorCache_ == newestRcvCursor) {
+                    rcvCursorCache_ = next_index(newestRcvCursor);
+                    rcvCursor_.store(rcvCursorCache_, std::memory_order_release);
+                } else {
+                    rcvCursorCache_ = newestRcvCursor;
+                }
+                
+                oldestOccupied_.store(false, std::memory_order_release);
+            }
+        }
+
+        // Normal case: buffer not full
+        new (&buffer_[sendCursor]) T(std::forward<U>(value));
+        sendCursor_.store(next_sendCursor, std::memory_order_release);
+
+        return ResponseStatus::SUCCESS;
+    }
 
     /// @brief Calculate the next power of 2 greater than or equal to n
     /// @param n The input value
@@ -227,7 +323,7 @@ private:
         
         // Use bit manipulation for efficiency
         size_t power = 1;
-        while (power <= n) {
+        while (power < n) {
             power <<= 1;
         }
         return power;
@@ -253,9 +349,8 @@ private:
     alignas(64) std::atomic<size_t> rcvCursor_{0};
     alignas(64) size_t sendCursorCache_{0}; // reduces cache coherency
 
-    friend class Sender<T>;
-    friend class Receiver<T>;
-    friend std::pair<Sender<T>, Receiver<T>> channel<T>(size_t capacity);
+    /// Flag indicating if the oldest element is occupied
+    alignas(64) std::atomic<bool> oldestOccupied_{false};
 };
 
 

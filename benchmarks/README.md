@@ -24,7 +24,7 @@ The results of the benchmarks will be presented in a tabular format, comparing t
 - case 1 - 5 seconds run
 - case 2 - 1milion messages run
 
-More is better.
+More means better. (Throughput = ops/sec)
 
 ### Test #1
 | Implementation | Throughput case 1 (default) | Throughput case 1 (pinned) | Throughput case 2 (default) | Throughput case 2 (pinned) |

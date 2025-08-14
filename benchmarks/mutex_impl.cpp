@@ -2,10 +2,10 @@
 #include <chrono>
 #include <iostream>
 #include <iomanip>
-#include <spsc_mutex.hpp>
+#include <spsc_mutex_benchmarks.hpp>
 #include "tools/config.hpp"
 
-using namespace channels::spsc;
+using namespace channels::spsc::benchmarks;
 
 void warmup() {
     spsc_mutex<int> queue(QUEUE_CAPACITY);
