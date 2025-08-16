@@ -29,6 +29,7 @@
 #include <memory>
 #include <algorithm>
 #include <thread>
+#include <type_traits>
 
 #include <channels.hpp>
 
@@ -68,25 +69,25 @@ public:
     Sender() = default;
     Sender(const Sender&) = delete;
     Sender& operator=(const Sender&) = delete;
-    
-    Sender& operator=(Sender&& other) {
+
+    Sender& operator=(Sender&& other) noexcept {
         channel_ = std::move(other.channel_);
         return *this;
     } 
-    Sender(Sender&& other) : channel_(std::move(other.channel_)) {}
+    Sender(Sender&& other) noexcept : channel_(std::move(other.channel_)) {}
 
     /// @brief Try to send a value to the channel
     /// @param value The value to send
     /// @return ResponseStatus indicating the result of the operation
     template<typename U>
-    ResponseStatus try_send(U&& value) {
+    ResponseStatus try_send(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
         return channel_->try_send(std::forward<U>(value));
     }
 
     /// @brief Send a value to the channel (copy version)
     /// @param value The value to send
     /// @note This function is blocking and will wait until the value is sent.
-    void send(const T& value) {
+    void send(const T& value) noexcept(std::is_nothrow_constructible_v<T, const T&>) {
         while (channel_->try_send(value) != ResponseStatus::SUCCESS) {
             if constexpr (Wait == WaitStrategy::YIELD) {
                 std::this_thread::yield(); // Yield to allow other threads to run
@@ -101,7 +102,7 @@ public:
     /// @brief Send a value to the channel (move version)
     /// @param value The value to send
     /// @note This function is lock-free but may block if the channel is full.
-    void send(T&& value) {
+    void send(T&& value) noexcept(std::is_nothrow_constructible_v<T, T&&>) {
         while (channel_->try_send(std::move(value)) != ResponseStatus::SUCCESS) {
             if constexpr (Wait == WaitStrategy::YIELD) {
                 std::this_thread::yield(); // Yield to allow other threads to run
@@ -134,24 +135,24 @@ public:
     Receiver(const Receiver&) = delete;
     Receiver& operator=(const Receiver&) = delete;
 
-    Receiver& operator=(Receiver&& other) {
+    Receiver& operator=(Receiver&& other) noexcept {
         channel_ = std::move(other.channel_);
         return *this;
     }
-    Receiver(Receiver&& other) : channel_(std::move(other.channel_)) {}
+    Receiver(Receiver&& other) noexcept : channel_(std::move(other.channel_)) {}
 
     /// @brief Try to receive a value from the channel
     /// @param value The received value
     /// @return ResponseStatus indicating the result of the operation
     /// @note This function is lock-free and wait-free.
-    ResponseStatus try_receive(T& value) {
+    ResponseStatus try_receive(T& value) noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
         return channel_->try_receive(value);
     }
 
     /// @brief Receive a value from the channel
     /// @return The received value
     /// @note This function is lock-free but may block if the channel is empty.
-    T receive() {
+    T receive() noexcept(std::is_nothrow_default_constructible_v<T> && std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
         T value;
         while (channel_->try_receive(value) != ResponseStatus::SUCCESS) {
             if constexpr (Wait == WaitStrategy::YIELD) {
@@ -220,7 +221,7 @@ public:
     /// @return ResponseStatus indicating the result of the operation
     /// @note This function is lock-free and wait-free
     template<typename U>
-    ResponseStatus try_send(U&& value) {
+    ResponseStatus try_send(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
         if constexpr (Strategy == OverflowStrategy::WAIT_ON_FULL) {
             return try_send_wait_on_full(std::forward<U>(value));
         } else {
@@ -232,7 +233,7 @@ public:
     /// @param value The variable to store the received value
     /// @return True if the value was received successfully, false if the channel is empty
     /// @note This function is lock-free and wait-free
-    ResponseStatus try_receive(T& value) {
+    ResponseStatus try_receive(T& value) noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
         if constexpr (Strategy == OverflowStrategy::OVERWRITE_ON_FULL) {
             // Set reader active flag to prevent overwrites during read
             bool isOccupied = oldestOccupied_.exchange(true, std::memory_order_acq_rel);
@@ -275,7 +276,7 @@ public:
 private:
     /// @brief Try to send with WAIT_ON_FULL strategy (original behavior)
     template<typename U>
-    inline ResponseStatus try_send_wait_on_full(U&& value) {
+    inline ResponseStatus try_send_wait_on_full(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
         size_t sendCursor = sendCursor_.load(std::memory_order_relaxed); // only sender thread writes this
         size_t next_sendCursor = next_index(sendCursor);
 
@@ -299,7 +300,7 @@ private:
     
     /// @brief Try to send with OVERWRITE_ON_FULL strategy
     template<typename U>
-    inline ResponseStatus try_send_overwrite_on_full(U&& value) {
+    inline ResponseStatus try_send_overwrite_on_full(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
         size_t sendCursor = sendCursor_.load(std::memory_order_relaxed); // only sender thread writes this
         size_t next_sendCursor = next_index(sendCursor);
 
@@ -341,7 +342,7 @@ private:
     /// @brief Calculate the next power of 2 greater than or equal to n
     /// @param n The input value
     /// @return The next power of 2
-    static constexpr size_t next_power_of_2(size_t n) {
+    static constexpr size_t next_power_of_2(const size_t n) noexcept {
         if (n <= 1) return 1;
         
         // Use bit manipulation for efficiency
@@ -356,7 +357,7 @@ private:
     /// @param val The current index
     /// @return The next index
     /// @note it might not be used for performance but it is a good reference
-    inline size_t next_index(const size_t val) const {
+    inline size_t next_index(const size_t val) const noexcept {
         return (val + 1) & capacity_mask_;
     }
 
