@@ -1,5 +1,5 @@
 # C++ Channels
-Simple and blazingly fast C++ implementation of channels for inter-thread communication. It is inspired by Rust's channels. This library provides a simple API for creating and using channels, making it easy to send and receive messages between threads while maintaining high performance and low latency.
+Simple and blazingly fast C++ implementation of channels for inter-thread communication. This library provides a simple API for creating and using channels, making it easy to send and receive messages between threads while maintaining high performance and low latency.
 
 
 # Supported Features
@@ -42,9 +42,22 @@ Benchmark results can be found in the [benchmark directory](./benchmark).
 I plan to work on more advanced features and optimizations for the channel library. If you have any requests or ideas, please feel free to reach out, open an issue or make pull request.
 
 ## Will Implement
+- Separate strategies for receiver and sender
 - Implementation of Multi-Producer, Multi-Consumer (MPMC) channel
-- Implementation Oneshot channel (single-use channel)
+- Implementation Oneshot channel (single-use channel, inspired by Rust's oneshot channel)
 
 ## Might consider
 - Implementation of broadcast channel (one-to-many)
 - Unbounded version of all channels
+
+
+# Usage
+This library is designed to be easy to use and integrate into your C++ projects. Simply include the header files from `include/` and start using the channel API to send and receive messages between threads.
+
+## Examples
+Examples can be found in the [examples directory](./examples).
+
+To run the examples you can use `make` in the root directory.
+```
+make example/spsc
+```
