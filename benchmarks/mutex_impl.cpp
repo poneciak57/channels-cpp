@@ -2,7 +2,7 @@
 #include <chrono>
 #include <iostream>
 #include <iomanip>
-#include <spsc_mutex_benchmarks.hpp>
+#include "tools/spsc_mutex_benchmarks.hpp"
 #include "tools/config.hpp"
 
 using namespace channels::spsc::benchmarks;

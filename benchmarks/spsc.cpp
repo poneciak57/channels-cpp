@@ -2,13 +2,13 @@
 #include <chrono>
 #include <iostream>
 #include <iomanip>
-#include <spsc.hpp>
+#include "tools/spsc_benchmarks.hpp"
 #include "tools/config.hpp"
 
-using namespace channels::spsc;
+using namespace channels::spsc::benchmarks;
 
 void warmup() {
-    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
+    auto [sender, receiver] = channel<int>(QUEUE_CAPACITY);
     // auto sender = std::move(channel_.first);
     // auto receiver = std::move(channel_.second);
 
@@ -28,7 +28,7 @@ void warmup() {
 }
 
 long double test_throughput_default(double duration_seconds, bool print_results) {
-    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
+    auto [sender, receiver] = channel<int>(QUEUE_CAPACITY);
 
     // Measure throughput
     auto start = std::chrono::high_resolution_clock::now();
@@ -73,7 +73,7 @@ long double test_throughput_default(double duration_seconds, bool print_results)
 }
 
 long double test_throughput_pinning(double duration_seconds, bool print_results) {
-    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
+    auto [sender, receiver] = channel<int>(QUEUE_CAPACITY);
 
     // Measure throughput
     auto start = std::chrono::high_resolution_clock::now();
@@ -119,7 +119,7 @@ long double test_throughput_pinning(double duration_seconds, bool print_results)
 }
 
 long double test_latency_default(bool print_results) {
-    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
+    auto [sender, receiver] = channel<int>(QUEUE_CAPACITY);
 
     // Measure throughput
     auto start = std::chrono::high_resolution_clock::now();
@@ -151,7 +151,7 @@ long double test_latency_default(bool print_results) {
 }
 
 long double test_latency_pinned(bool print_results) {
-    auto [sender, receiver] = channels::spsc::channel<int>(QUEUE_CAPACITY);
+    auto [sender, receiver] = channel<int>(QUEUE_CAPACITY);
 
     // Measure throughput
     auto start = std::chrono::high_resolution_clock::now();
