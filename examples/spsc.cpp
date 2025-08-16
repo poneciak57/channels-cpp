@@ -27,6 +27,7 @@
 #include <thread>
 #include <iostream>
 
+using namespace channels;
 using namespace channels::spsc;
 
 
