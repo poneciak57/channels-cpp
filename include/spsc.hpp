@@ -98,7 +98,6 @@ public:
     /// @param value The value to send
     /// @note This function is blocking and will wait until the value is sent.
     void send(const T& value) {
-        size_t rcvCursor;
         while (channel_->try_send(value) != ResponseStatus::SUCCESS) {
             if constexpr (Wait == WaitStrategy::YIELD) {
                 std::this_thread::yield(); // Yield to allow other threads to run
@@ -114,7 +113,6 @@ public:
     /// @param value The value to send
     /// @note This function is lock-free but may block if the channel is full.
     void send(T&& value) {
-        size_t rcvCursor;
         while (channel_->try_send(std::move(value)) != ResponseStatus::SUCCESS) {
             if constexpr (Wait == WaitStrategy::YIELD) {
                 std::this_thread::yield(); // Yield to allow other threads to run
@@ -166,7 +164,6 @@ public:
     /// @note This function is lock-free but may block if the channel is empty.
     T receive() {
         T value;
-        size_t senderCursor;
         while (channel_->try_receive(value) != ResponseStatus::SUCCESS) {
             if constexpr (Wait == WaitStrategy::YIELD) {
                 std::this_thread::yield(); // Yield to allow other threads to run
