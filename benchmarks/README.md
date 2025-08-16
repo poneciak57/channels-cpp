@@ -2,10 +2,10 @@
 
 Here is the list of benchmarked open source solutions and their score.
 
-# SPSC Queue
-
+# SPSC Channel
+    
 ## Methods
-To benchmark SPSC Queue, we will use the following methods:
+To benchmark SPSC Channel, we will use the following methods:
 
 1. **Throughput Measurement**: Measure the number of messages processed per second.
 2. **Latency Measurement**: Measure the time taken to process 1000000 messages.
