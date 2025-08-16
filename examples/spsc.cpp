@@ -237,6 +237,56 @@ void example_wait_busy() {
 
 }
 
+struct TestingStruct {
+    int id;
+    TestingStruct() : id(0) {
+        std::cout << "Default constructed TestingStruct with id: " << id << std::endl;
+    }
+    TestingStruct(int id) : id(id) {
+        std::cout << "Constructed TestingStruct with id: " << id << std::endl;
+    }
+    ~TestingStruct() {
+        std::cout << "Destructed TestingStruct with id: " << id << std::endl;
+    }
+    TestingStruct(TestingStruct&& other) noexcept : id(other.id) {
+        std::cout << "Moved TestingStruct with id: " << id << std::endl;
+    }
+    TestingStruct& operator=(TestingStruct&& other) noexcept {
+        id = other.id;
+        std::cout << "Moved assignment TestingStruct with id: " << id << std::endl;
+        return *this;
+    }
+    TestingStruct& operator=(const TestingStruct& other) {
+        id = other.id;
+        std::cout << "Copy assigned TestingStruct with id: " << id << std::endl;
+        return *this;
+    }
+    TestingStruct(const TestingStruct& other) : id(other.id) {
+        std::cout << "Copy constructed TestingStruct with id: " << id << std::endl;
+    }
+};
+
+// This example shows that move semantics are used, the original object is not copied
+void example_testing_struct() {
+    auto [sender, receiver] = channel<TestingStruct, OverflowStrategy::WAIT_ON_FULL, WaitStrategy::BUSY_LOOP>(16);
+
+    // here we will just move values
+    sender.send(TestingStruct(1));
+    sender.send(TestingStruct(2));
+    sender.send(TestingStruct(3));
+
+    std::cin.ignore();
+
+    // here we will just move values
+    auto v1 = receiver.receive();
+    std::cout << "Received: " << v1.id << std::endl;
+    auto v2 = receiver.receive();
+    std::cout << "Received: " << v2.id << std::endl;
+    // third value destructor will be called when sender and receiver go out of scope
+    // auto v3 = receiver.receive();
+    // std::cout << "Received: " << v3.id << std::endl;
+}
+
 int main() {
     std::cout << "Example: Simple" << std::endl;
     example_simple();
@@ -249,6 +299,9 @@ int main() {
 
     std::cout << "Example: Wait Busy" << std::endl;
     example_wait_busy();
+
+    std::cout << "Example: Secure Move by Value" << std::endl;
+    example_testing_struct();
 
     return 0;
 }
