@@ -2,7 +2,15 @@
  * Channels-CPP - A high-performance lock-free channel library for C++
  * Single Producer Single Consumer (SPSC) Channel Implementation
  * 
- * Copyright (c) 2025 poneciak57
+ * Copyright (c) 2025 Kacper Poneta (poneciak57)
+ * 
+ * This implementation is an original work by the author, but it is 
+ * inspired by and derived in part from concepts and code published 
+ * in the "react-native-audio-api" project by Software Mansion, 
+ * licensed under the MIT License.
+ * 
+ * Original upstream copyright:
+ * Copyright (c) 2025 Software Mansion
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +30,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 #pragma once
 
 #include <atomic>

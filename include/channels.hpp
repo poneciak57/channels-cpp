@@ -2,7 +2,7 @@
 /*
  * Channels-CPP - A high-performance lock-free channel library for C++
  * 
- * Copyright (c) 2025 poneciak57
+ * Copyright (c) 2025 Kacper Poneta (poneciak57)
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -61,6 +61,18 @@ enum class ResponseStatus {
 
     /// @brief Indicates that the last value is being overwritten or read so try fails
     /// @note This status is only returned if given channel supports OVERWRITE_ON_FULL strategy
-    SKIP_DUE_TO_OVERWRITE
+    SKIP_DUE_TO_OVERWRITE,
+
+    /// @brief Indicates that the channel is closed
+    /// @note closed channel cannot be used and/or opened
+    CHANNEL_CLOSED,
+
+    /// @brief Indicates that the receiver is closed
+    /// @note closed receiver cannot be used and/or opened
+    RECEIVER_CLOSED,
+
+    /// @brief Indicates that the sender is closed
+    /// @note closed sender cannot be used and/or opened
+    SENDER_CLOSED
 };
 }
