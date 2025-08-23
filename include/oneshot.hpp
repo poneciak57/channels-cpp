@@ -92,13 +92,6 @@ public:
         return channel_->send(std::move(value));
     }
 
-    /// @brief Checks if the sender end is closed
-    /// @return True if the sender end is closed, false otherwise
-    /// @note If sender is closed, it means that value has been already sent
-    bool is_closed() const noexcept {
-        return channel_->isSentCache_;
-    }
-
 private:
     std::shared_ptr<InnerChannel<T, Wait>> channel_;
     
@@ -148,17 +141,10 @@ public:
             } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
                 asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
             } else if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
-                channel_->isReady_.wait(false, std::memory_order_acquire);
+                channel_->state_.wait(InnerChannel<T, Wait>::NOT_SENT_MASK, std::memory_order_acquire);
             }
         }
         return value;
-    }
-
-    /// @brief Checks if the receiver end is closed
-    /// @return True if the receiver end is closed, false otherwise
-    /// @note If receiver is closed, it means that value has been already received
-    bool is_closed() const noexcept {
-        return channel_->isReceivedCache_;
     }
 
 private:
@@ -174,9 +160,14 @@ class InnerChannel {
 public:
     /// @brief Constructor for internal use only
     /// @note This constructor is public to allow std::make_shared to work, but should not be called directly by users
-    InnerChannel() : 
-        value_(static_cast<T*>(operator new(sizeof(T), std::align_val_t{alignof(T)}))),
-        isReady_(false) {}
+    explicit InnerChannel() noexcept : state_{ 0 } {}
+
+    /// @brief Destructor
+    ~InnerChannel() noexcept {
+        if (state_.load(std::memory_order_acquire) == InnerChannel<T, Wait>::SENT_MASK) {
+            reinterpret_cast<T*>(value_)->~T();
+        }
+    }
 
     /// @brief Sends a value through the channel
     /// @tparam U The type of the value being sent
@@ -184,14 +175,14 @@ public:
     /// @return The status of the send operation (SUCCESS, SENDER_CLOSED)
     template <typename U>
     ResponseStatus send(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
-        if (isSentCache_) {
-            return ResponseStatus::SENDER_CLOSED; // Already has a value
+        if (state_.load(std::memory_order_acquire) != InnerChannel<T, Wait>::NOT_SENT_MASK) {
+            return ResponseStatus::SENDER_CLOSED; // Already sent
         }
+
         new (value_) T(std::forward<U>(value));
-        isSentCache_ = true; // only used by sender thread
-        isReady_.store(true, std::memory_order_release);
+        state_.store(InnerChannel<T, Wait>::SENT_MASK, std::memory_order_release); // Mark as sent
         if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
-            isReady_.notify_one();
+            state_.notify_one();
         }
         return ResponseStatus::SUCCESS;
     }
@@ -202,28 +193,29 @@ public:
     /// @return The status of the receive operation (SUCCESS, RECEIVER_CLOSED, CHANNEL_EMPTY)
     template <typename U>
     ResponseStatus try_receive(U& value) noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
-        if (isReceivedCache_) {
+        size_t state = state_.load(std::memory_order_acquire);
+        if (state == InnerChannel<T, Wait>::RECEIVED_MASK) {
             return ResponseStatus::RECEIVER_CLOSED; // Already has a value
         }
-        if (!isReady_.load(std::memory_order_acquire)) {
+        if (state == InnerChannel<T, Wait>::NOT_SENT_MASK) {
             return ResponseStatus::CHANNEL_EMPTY; // No value available
         }
-        value = std::move(*value_);
-        delete value_;
-        value_ = nullptr;
+        T* valuePtr = reinterpret_cast<T*>(value_);
+        value = std::forward<T>(*valuePtr);
+        valuePtr->~T();
+        state_.store(InnerChannel<T, Wait>::RECEIVED_MASK, std::memory_order_release);
         return ResponseStatus::SUCCESS;
     }
 
 private:
-    T *value_;
+    alignas(alignof(T)) char value_[sizeof(T)];
 
-    /// @brief Cached value for faster sender access
-    alignas(cache_line_size) bool isSentCache_ { false };
+    /// @brief Current state of the channel
+    std::atomic<size_t> state_{ 0 };
 
-    /// @brief Cached value for faster receiver access
-    alignas(cache_line_size) bool isReceivedCache_ { false };
-
-    alignas(cache_line_size) std::atomic<bool> isReady_;
+    static constexpr size_t RECEIVED_MASK = 2;
+    static constexpr size_t SENT_MASK = 1;
+    static constexpr size_t NOT_SENT_MASK = 0;
 
     friend class Sender<T, Wait>;
     friend class Receiver<T, Wait>;
