@@ -25,6 +25,8 @@
 
 namespace channels {
 
+constexpr size_t cache_line_size = 64; // Assuming a cache line size of 64 bytes
+
 /// @brief Overflow strategy for sender when the channel is full
 enum class OverflowStrategy {
     /// @brief Block and wait for space (default behavior)

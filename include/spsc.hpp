@@ -373,15 +373,15 @@ private:
     T* buffer_;
 
     /// Producer-side data (accessed by sender thread)
-    alignas(64) std::atomic<size_t> sendCursor_{0};
-    alignas(64) size_t rcvCursorCache_{0}; // reduces cache coherency
+    alignas(cache_line_size) std::atomic<size_t> sendCursor_{0};
+    alignas(cache_line_size) size_t rcvCursorCache_{0}; // reduces cache coherency
 
     /// Consumer-side data (accessed by receiver thread)  
-    alignas(64) std::atomic<size_t> rcvCursor_{0};
-    alignas(64) size_t sendCursorCache_{0}; // reduces cache coherency
+    alignas(cache_line_size) std::atomic<size_t> rcvCursor_{0};
+    alignas(cache_line_size) size_t sendCursorCache_{0}; // reduces cache coherency
 
     /// Flag indicating if the oldest element is occupied
-    alignas(64) std::atomic<bool> oldestOccupied_{false};
+    alignas(cache_line_size) std::atomic<bool> oldestOccupied_{false};
 
     friend class Sender<T, Strategy, Wait>;
     friend class Receiver<T, Strategy, Wait>;

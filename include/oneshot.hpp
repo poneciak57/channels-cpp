@@ -218,12 +218,12 @@ private:
     T *value_;
 
     /// @brief Cached value for faster sender access
-    alignas(64) bool isSentCache_ { false };
-    
-    /// @brief Cached value for faster receiver access
-    alignas(64) bool isReceivedCache_ { false };
+    alignas(cache_line_size) bool isSentCache_ { false };
 
-    alignas(64) std::atomic<bool> isReady_;
+    /// @brief Cached value for faster receiver access
+    alignas(cache_line_size) bool isReceivedCache_ { false };
+
+    alignas(cache_line_size) std::atomic<bool> isReady_;
 
     friend class Sender<T, Wait>;
     friend class Receiver<T, Wait>;
