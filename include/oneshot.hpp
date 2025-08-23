@@ -32,6 +32,7 @@
 #include <type_traits>
 
 #include <channels.hpp>
+#include <arc_ptr.hpp>
 
 namespace channels::oneshot {
 
@@ -49,7 +50,7 @@ class InnerChannel;
 /// One-shot channels are designed for sending a single value from a sender to a receiver.
 template <typename T, WaitStrategy Wait = WaitStrategy::BUSY_LOOP>
 std::pair<Sender<T, Wait>, Receiver<T, Wait>> channel() {
-    auto channel = std::make_shared<InnerChannel<T, Wait>>();
+    channels::arc_ptr<InnerChannel<T, Wait>> channel = channels::make_arc<InnerChannel<T, Wait>>();
     return {Sender<T, Wait>(channel), Receiver<T, Wait>(channel)};
 }
 
@@ -59,7 +60,7 @@ std::pair<Sender<T, Wait>, Receiver<T, Wait>> channel() {
 /// It allows to send values through the channel
 template<typename T, WaitStrategy Wait = WaitStrategy::BUSY_LOOP>
 class Sender {
-    explicit Sender(std::shared_ptr<InnerChannel<T, Wait>> channel) noexcept : channel_(channel) {}
+    explicit Sender(channels::arc_ptr<InnerChannel<T, Wait>> channel) noexcept : channel_(channel) {}
 public:
     Sender() = default;
     Sender(const Sender&) = delete;
@@ -82,19 +83,19 @@ public:
     /// @param value The value to send
     /// @return The status of the send operation (SUCCESS, SENDER_CLOSED)
     ResponseStatus send(const T& value) noexcept(std::is_nothrow_constructible_v<T, const T&>) {
-        return channel_->send(value);
+        return channel_.get_mut()->send(value);
     }
 
     /// @brief Sends a value through the channel
     /// @param value The value to send
     /// @return The status of the send operation (SUCCESS, SENDER_CLOSED)
     ResponseStatus send(T&& value) noexcept(std::is_nothrow_constructible_v<T, T&&>) {
-        return channel_->send(std::move(value));
+        return channel_.get_mut()->send(std::move(value));
     }
 
 private:
-    std::shared_ptr<InnerChannel<T, Wait>> channel_;
-    
+    channels::arc_ptr<InnerChannel<T, Wait>> channel_;
+
     friend std::pair<Sender<T, Wait>, Receiver<T, Wait>> channel<T, Wait>(void);
 };
 
@@ -104,7 +105,7 @@ private:
 /// It allows to receive values from the channel
 template<typename T, WaitStrategy Wait = WaitStrategy::BUSY_LOOP>
 class Receiver {
-    explicit Receiver(std::shared_ptr<InnerChannel<T, Wait>> channel) noexcept : channel_(channel) {}
+    explicit Receiver(channels::arc_ptr<InnerChannel<T, Wait>> channel) noexcept : channel_(channel) {}
 public:
     Receiver() = default;
     Receiver(const Receiver&) = delete;
@@ -127,7 +128,7 @@ public:
     /// @param value The variable to store the received value
     /// @return The status of the receive operation (SUCCESS, RECEIVER_CLOSED, CHANNEL_EMPTY)
     ResponseStatus try_receive(T& value) noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
-        return channel_->try_receive(value);
+        return channel_.get_mut()->try_receive(value);
     }
 
     /// @brief Receives a value from the channel
@@ -135,20 +136,20 @@ public:
     /// @note If the receiver is closed this method will block forever, you should not receive from oneshot channel twice
     T receive() noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
         T value;
-        while (channel_->try_receive(value) != ResponseStatus::SUCCESS) {
+        while (channel_.get_mut()->try_receive(value) != ResponseStatus::SUCCESS) {
             if constexpr (Wait == WaitStrategy::YIELD) {
                 std::this_thread::yield(); // Yield to allow other threads to run
             } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
                 asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
             } else if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
-                channel_->state_.wait(InnerChannel<T, Wait>::NOT_SENT_MASK, std::memory_order_acquire);
+                channel_.get_mut()->state_.wait(InnerChannel<T, Wait>::NOT_SENT_MASK, std::memory_order_acquire);
             }
         }
         return value;
     }
 
 private:
-    std::shared_ptr<InnerChannel<T, Wait>> channel_;
+    channels::arc_ptr<InnerChannel<T, Wait>> channel_;
 
     friend std::pair<Sender<T, Wait>, Receiver<T, Wait>> channel<T, Wait>(void);
 };

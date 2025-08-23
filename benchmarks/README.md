@@ -59,13 +59,14 @@ To test its performance i created simple throughput test. In which two threads s
 
 | Case | Total time | Throughput  | Total memory allocated |
 |------|------------|-----------------|------------------------|
-| 1    | 5.1s       | 3_073_348 ops/s | unknown                |
-| 2    | 0.51s      | 3_626_045 ops/s | ~99mb                  |
+| 1    | 5.1s       | 3_812_218 ops/s | unknown                |
+| 2    | 0.51s      | 4_107_170 ops/s | ~66mb                  |
 
 > Device: MacBook Pro M1 16GB (if ram matters) 
 
 ## Rusts tokio oneshot 
-I recreated same test using rust tokio oneshot channel. It performed little bit better but you need to remember that tokio is very performant asynchronous runtime. Rust throughput on 5 seconds test was `5_400_417`
+I recreated same test using rust tokio oneshot channel. It performed little bit better but you need to remember that tokio is very performant asynchronous runtime. Rust throughput on 5 seconds test was `5_400_417` which is slightly better than this implementation.
+But that difference might be attributed to the fact that tokio uses a more efficient memory allocator and has less overhead in terms of context switching scheduling and CPU usage.
 
 
 ## Results summary
