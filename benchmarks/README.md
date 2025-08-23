@@ -45,3 +45,24 @@ More means better. (Throughput = ops/sec)
 
 > Device: Lenovo IdeaPad (linux, some ryzen)
 > Linux has real thread pinning capabilities.
+
+# Oneshot channel
+
+## Method
+To test its performance i created simple throughput test. In which two threads sends message one to another with `Sender` as a member of the message. So T1 sends message and sender then T2 uses that sender to send back its message and so on and so on. It guarantes synchronization and lets measure performance.
+
+> I also overwrote global alocator with simple one, because creating a channel requires allocating memory on the heap at the time of benchmarking (maybe will change in future or give an option to choose)
+
+## Results
+- case 1, no custom allocator (5 seconds)
+- case 2, custom allocator (0.5 second)
+
+| Case | Messages sent | Total time | Throughput  | Total memory allocated |
+|------|---------------|------------|-----------------|------------------------|
+| 1    | 4_187_660x2   | 5.1s       | 1_673_348 ops/s | unknown                |
+| 2    | 825_432x2     | 0.51s      | 3_268_428 ops/s | ~567mb                 |
+
+> Device: MacBook Pro M1 16GB (if ram matters) 
+
+## Results summary
+It does not outperformed SPSC because of the overhead of this benchmarking case design when each thread can send one message at a time and before sending next one it needs to wait on the previous one to be received. But it is lightweight and especially designed for case when one message should be passed (for example some callback system);
