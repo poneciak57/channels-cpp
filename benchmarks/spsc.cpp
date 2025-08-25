@@ -2,7 +2,7 @@
  * Channels-CPP - A high-performance lock-free channel library for C++
  * SPSC Channel Benchmarks
  * 
- * Copyright (c) 2025 poneciak57
+ * Copyright (c) 2025 Kacper Poneta (poneciak57)
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
