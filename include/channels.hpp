@@ -77,4 +77,62 @@ enum class ResponseStatus {
     /// @note closed sender cannot be used and/or opened
     SENDER_CLOSED
 };
+
+
+/// @brief RAII-style allocation guard similar to libc++'s
+/// @tparam __alloc 
+/// @note This class provides a way to manage dynamic memory allocation and deallocation
+/// @note This class is NOT intended to be used directly by the user
+template <typename __alloc>
+class __allocation_guard {
+    using __allocator_traits = std::allocator_traits<__alloc>;
+    using __pointer = typename __allocator_traits::pointer;
+    using __size_type = typename __allocator_traits::size_type;
+    using __value_type = typename __allocator_traits::value_type;
+public:
+    __allocation_guard(const __alloc& __a, const __size_type& __s, std::align_val_t __alignment = std::align_val_t{alignof(__value_type)}) 
+        : __alloc_(__a), __count_(__s), __alignment_(__alignment), __released_(false) {
+            if constexpr (requires { __allocator_traits::allocate(__alloc_, __s, __alignment); }) {
+                // If the allocator supports aligned allocation, use it
+                __ptr_ = __allocator_traits::allocate(__alloc_, __s, __alignment);
+            } else {
+                // Otherwise, fall back to regular allocation
+                __ptr_ = __allocator_traits::allocate(__alloc_, __s);
+            }
+        }
+    __allocation_guard(const __allocation_guard&) = delete;
+    __allocation_guard& operator=(const __allocation_guard&) = delete;
+
+    ~__allocation_guard() {
+        if (!__released_) {
+            if constexpr (requires { __allocator_traits::deallocate(__alloc_, __ptr_, __count_, __alignment_); }) {
+                __allocator_traits::deallocate(__alloc_, __ptr_, __count_, __alignment_);
+            } else {
+                __allocator_traits::deallocate(__alloc_, __ptr_, __count_);
+            }
+        }
+    }
+
+    inline __pointer get() const noexcept{
+        return __ptr_;
+    }
+
+    inline __pointer release() noexcept {
+        __released_ = true;
+        return __ptr_;
+    }
+
+    inline __size_type size() const noexcept {
+        return __count_;
+    }
+
+private:
+    __alloc __alloc_;
+    __pointer __ptr_;
+    const __size_type __count_;
+    const std::align_val_t __alignment_;
+    bool __released_;
+};
+
+
 }
