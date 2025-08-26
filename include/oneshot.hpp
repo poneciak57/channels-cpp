@@ -62,7 +62,7 @@ template<typename T, WaitStrategy Wait = WaitStrategy::BUSY_LOOP>
 class Sender {
     explicit Sender(channels::arc_ptr<InnerChannel<T, Wait>> channel) noexcept : channel_(channel) {}
 public:
-    Sender() = default;
+    Sender() noexcept = default;
     Sender(const Sender&) = delete;
     Sender& operator=(const Sender&) = delete;
 
@@ -107,7 +107,7 @@ template<typename T, WaitStrategy Wait = WaitStrategy::BUSY_LOOP>
 class Receiver {
     explicit Receiver(channels::arc_ptr<InnerChannel<T, Wait>> channel) noexcept : channel_(channel) {}
 public:
-    Receiver() = default;
+    Receiver() noexcept = default;
     Receiver(const Receiver&) = delete;
     Receiver& operator=(const Receiver&) = delete;
 
@@ -145,7 +145,7 @@ public:
                 channel_.get_mut()->state_.wait(InnerChannel<T, Wait>::NOT_SENT_MASK, std::memory_order_acquire);
             }
         }
-        return value;
+        return std::move(value);
     }
 
 private:
@@ -164,6 +164,7 @@ public:
     explicit InnerChannel() noexcept : state_{ 0 } {}
 
     /// @brief Destructor
+    /// @note if value was sent but was not received we need to call its destructor
     ~InnerChannel() noexcept {
         if (state_.load(std::memory_order_acquire) == InnerChannel<T, Wait>::SENT_MASK) {
             reinterpret_cast<T*>(value_)->~T();
@@ -189,26 +190,26 @@ public:
     }
 
     /// @brief Tries to receive a value from the channel
-    /// @tparam U The type of the value being received
     /// @param value The variable to store the received value
     /// @return The status of the receive operation (SUCCESS, RECEIVER_CLOSED, CHANNEL_EMPTY)
-    template <typename U>
-    ResponseStatus try_receive(U& value) noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
-        size_t state = state_.load(std::memory_order_acquire);
+    ResponseStatus try_receive(T& value) noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
+        const size_t state = state_.load(std::memory_order_acquire);
         if (state == InnerChannel<T, Wait>::RECEIVED_MASK) {
-            return ResponseStatus::RECEIVER_CLOSED; // Already has a value
+            return ResponseStatus::RECEIVER_CLOSED; // Already received value
         }
         if (state == InnerChannel<T, Wait>::NOT_SENT_MASK) {
             return ResponseStatus::CHANNEL_EMPTY; // No value available
         }
         T* valuePtr = reinterpret_cast<T*>(value_);
-        value = std::forward<T>(*valuePtr);
+        value = std::move(*valuePtr);
         valuePtr->~T();
         state_.store(InnerChannel<T, Wait>::RECEIVED_MASK, std::memory_order_release);
         return ResponseStatus::SUCCESS;
     }
 
 private:
+    /// @brief buffer for single value of type T
+    /// @note this way we can reduce heap allocations
     alignas(alignof(T)) char value_[sizeof(T)];
 
     /// @brief Current state of the channel

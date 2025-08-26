@@ -59,8 +59,8 @@ To test its performance i created simple throughput test. In which two threads s
 
 | Case | Total time | Throughput  | Total memory allocated |
 |------|------------|-----------------|------------------------|
-| 1    | 5.1s       | 3_812_218 ops/s | unknown                |
-| 2    | 0.51s      | 4_107_170 ops/s | ~66mb                  |
+| 1    | 5.1s       | 4_070_520 ops/s | unknown                |
+| 2    | 0.51s      | 4_207_170 ops/s | ~68mb                  |
 
 > Device: MacBook Pro M1 16GB (if ram matters) 
 
