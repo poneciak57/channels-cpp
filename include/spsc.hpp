@@ -95,14 +95,17 @@ public:
     /// @param value The value to send
     /// @note This function is blocking and will wait until the value is sent.
     void send(const T& value) noexcept(std::is_nothrow_constructible_v<T, const T&>) {
-        while (channel_->try_send(value) != ResponseStatus::SUCCESS) {
-            if constexpr (Wait == WaitStrategy::YIELD) {
-                std::this_thread::yield(); // Yield to allow other threads to run
-            } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
-                asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
-            } else if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
-                channel_->rcvCursor_.wait(channel_->rcvCursorCache_, std::memory_order_acquire);
-            }
+        if (channel_->try_send(value) != ResponseStatus::SUCCESS) [[ unlikely ]] {
+            do {
+                if constexpr (Wait == WaitStrategy::YIELD) {
+                    std::this_thread::yield(); // Yield to allow other threads to run
+                } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
+                    asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
+                } else if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
+                    channel_->rcvCursor_.wait(channel_->rcvCursorCache_, std::memory_order_acquire);
+                }
+
+            } while (channel_->try_send(value) != ResponseStatus::SUCCESS); 
         }
     }
 
@@ -110,14 +113,17 @@ public:
     /// @param value The value to send
     /// @note This function is lock-free but may block if the channel is full.
     void send(T&& value) noexcept(std::is_nothrow_constructible_v<T, T&&>) {
-        while (channel_->try_send(std::move(value)) != ResponseStatus::SUCCESS) {
-            if constexpr (Wait == WaitStrategy::YIELD) {
-                std::this_thread::yield(); // Yield to allow other threads to run
-            } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
-                asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
-            } else if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
-                channel_->rcvCursor_.wait(channel_->rcvCursorCache_, std::memory_order_acquire);
-            }
+        if (channel_->try_send(std::move(value)) != ResponseStatus::SUCCESS) [[ unlikely ]] {
+            do {
+                if constexpr (Wait == WaitStrategy::YIELD) {
+                    std::this_thread::yield(); // Yield to allow other threads to run
+                } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
+                    asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
+                } else if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
+                    channel_->rcvCursor_.wait(channel_->rcvCursorCache_, std::memory_order_acquire);
+                }
+
+            } while (channel_->try_send(std::move(value)) != ResponseStatus::SUCCESS); 
         }
     }
 
@@ -161,14 +167,16 @@ public:
     /// @note This function is lock-free but may block if the channel is empty.
     T receive() noexcept(std::is_nothrow_default_constructible_v<T> && std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>) {
         T value;
-        while (channel_->try_receive(value) != ResponseStatus::SUCCESS) {
-            if constexpr (Wait == WaitStrategy::YIELD) {
-                std::this_thread::yield(); // Yield to allow other threads to run
-            } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
-                asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
-            } else if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
-                channel_->sendCursor_.wait(channel_->sendCursorCache_, std::memory_order_acquire);
-            }
+        if (channel_->try_receive(value) != ResponseStatus::SUCCESS) [[ unlikely ]] {
+            do {
+                if constexpr (Wait == WaitStrategy::YIELD) {
+                    std::this_thread::yield(); // Yield to allow other threads to run
+                } else if constexpr (Wait == WaitStrategy::BUSY_LOOP) {
+                    asm volatile ("" ::: "memory"); // Busy loop, just spin with compiler barrier
+                } else if constexpr (Wait == WaitStrategy::ATOMIC_WAIT) {
+                    channel_->sendCursor_.wait(channel_->sendCursorCache_, std::memory_order_acquire);
+                }
+            } while (channel_->try_receive(value) != ResponseStatus::SUCCESS); 
         }
         return value;
     }

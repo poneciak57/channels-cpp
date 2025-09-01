@@ -31,7 +31,7 @@ More means better. (Throughput = ops/sec)
 |----------------|-----------------------|--------------|--------------|--------------|
 | Mutex          |            733_529      |    257_435     |    1_969_995   |    1_901_464   |
 | Boost          |          47_586_183     |  49_778_122    |   77_319_394   |   76_695_858   |
-| SPSC           |          50_846_662     |  52_201_800    |   76_898_212   |   72_571_863   |
+| SPSC           |          65_557_247     |  64_332_749    |   106_272_749   |   113_833_255   |
 
 > Device: MacBook Pro M1 16GB (if ram matters) 
 > There is no thread pinning here i use some priority thing not sure how it works
@@ -45,6 +45,7 @@ More means better. (Throughput = ops/sec)
 
 > Device: Lenovo IdeaPad (linux, some ryzen)
 > Linux has real thread pinning capabilities.
+> [!NOTE] might be outdated
 
 # Oneshot channel
 

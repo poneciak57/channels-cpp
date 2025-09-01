@@ -94,9 +94,11 @@ public:
     /// @param value The value to send
     /// @note This function is blocking and will wait until the value is sent.
     void send(T&& value) {
-        while (!channel_->try_send(std::move(value))) {
-            // compiler barrier
-            asm volatile ("" ::: "memory");
+        if (!channel_->try_send(std::move(value))) [[ unlikely ]] {
+            do {
+                // compiler barrier
+                asm volatile ("" ::: "memory");
+            } while (!channel_->try_send(std::move(value)));
         }
     }
 
@@ -136,9 +138,11 @@ public:
     /// @note This function is blocking and will wait until a value is available.
     T receive() {
         T value;
-        while (!channel_->try_receive(value)) {
-            // compiler barrier
-            asm volatile ("" ::: "memory");
+        if (!channel_->try_receive(value)) [[ unlikely ]] {
+            do {
+                // compiler barrier
+                asm volatile ("" ::: "memory");
+            } while (!channel_->try_receive(value));
         }
         return value;
     }
