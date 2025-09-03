@@ -228,7 +228,11 @@ public:
         }
 
         // Deallocate the buffer
-        ::operator delete[](buffer_);
+        ::operator delete[](
+            buffer_,
+            capacity_ * sizeof(T),
+            std::align_val_t{alignof(T)}
+        );
     }
 
     /// @brief Try to send a value to the channel
